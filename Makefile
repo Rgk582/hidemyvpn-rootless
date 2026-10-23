@@ -6,8 +6,7 @@ INSTALL_TARGET_PROCESSES = SpringBoard
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = HideMyVPN
-HideMyVPN_FILES = Tweak.x Report.x
-HideMyVPN_FRAMEWORKS = UIKit QuartzCore
+HideMyVPN_FILES = Tweak.x
 HideMyVPN_CFLAGS = -fobjc-arc
 
 include $(THEOS_MAKE_PATH)/tweak.mk

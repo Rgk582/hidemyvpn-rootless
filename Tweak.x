@@ -1,73 +1,6 @@
-#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <substrate.h>
-
-static NSMutableDictionary<NSString *, NSValue *> *gOrig;
-int HMVGetterCalls, HMVSetterCalls, HMVStringViewCalls;
-NSMutableArray<NSString *> *HMVHooked;
-
-// Returns a copy of a status bar entry with enabled = NO, so its item isn't drawn.
-static id disabledEntry(id entry) {
-    if (!entry) return nil;
-    @try {
-        id copy = [entry copy];
-        [copy setValue:@NO forKey:@"enabled"];
-        return copy;
-    } @catch (NSException *e) {
-        return entry;
-    }
-}
-
-static IMP origFor(SEL sel) {
-    return (IMP)[gOrig[NSStringFromSelector(sel)] pointerValue];
-}
-
-static id hookedGetter(id self, SEL _cmd) {
-    HMVGetterCalls++;
-    id entry = ((id (*)(id, SEL))origFor(_cmd))(self, _cmd);
-    return disabledEntry(entry);
-}
-
-static void hookedSetter(id self, SEL _cmd, id entry) {
-    HMVSetterCalls++;
-    ((void (*)(id, SEL, id))origFor(_cmd))(self, _cmd, disabledEntry(entry));
-}
-
-static void hookMethod(Class cls, SEL sel, IMP replacement) {
-    IMP orig = NULL;
-    MSHookMessageEx(cls, sel, replacement, &orig);
-    gOrig[NSStringFromSelector(sel)] = [NSValue valueWithPointer:(void *)orig];
-    [HMVHooked addObject:NSStringFromSelector(sel)];
-}
-
-static BOOL shouldHide(NSString *getter) {
-    NSString *g = getter.lowercaseString;
-    if (![g hasSuffix:@"entry"]) return NO;
-    return [g containsString:@"vpn"] || [g containsString:@"cellular"] || [g containsString:@"service"];
-}
-
-// Hooks every *Entry getter/setter on the status bar data class that relates to
-// VPN, cellular or service, which covers the "No Service" carrier label.
-static void hookStatusBarData(void) {
-    Class cls = objc_getClass("_UIStatusBarData");
-    if (!cls) return;
-    unsigned int count = 0;
-    Method *methods = class_copyMethodList(cls, &count);
-    NSMutableArray<NSString *> *getters = [NSMutableArray array];
-    for (unsigned int i = 0; i < count; i++) {
-        NSString *name = NSStringFromSelector(method_getName(methods[i]));
-        if (![name containsString:@":"] && shouldHide(name)) [getters addObject:name];
-    }
-    free(methods);
-    for (NSString *getter in getters) {
-        hookMethod(cls, NSSelectorFromString(getter), (IMP)hookedGetter);
-        NSString *setter = [NSString stringWithFormat:@"set%@%@:",
-            [[getter substringToIndex:1] uppercaseString], [getter substringFromIndex:1]];
-        if (class_getInstanceMethod(cls, NSSelectorFromString(setter))) {
-            hookMethod(cls, NSSelectorFromString(setter), (IMP)hookedSetter);
-        }
-    }
-}
 
 // Original HideMyVPN hook: SpringBoard's source of truth for the VPN status bar item.
 %group Telephony
@@ -82,31 +15,36 @@ static BOOL isServiceText(NSString *text) {
     return [text isEqualToString:@"No Service"] || [text isEqualToString:@"No SIM"];
 }
 
-// Label level: blanks the carrier label when it says "No Service" or "No SIM",
-// covering the lock screen and Control Center.
-%group StringView
-%hook _UIStatusBarStringView
-- (void)setText:(NSString *)text {
-    HMVStringViewCalls++;
-    NSString *shown = isServiceText(text) ? @"" : text;
-    %orig(shown);
+// iOS 26 draws the lock screen and Control Center carrier label with STUIStatusBarStringView
+// (older versions use _UIStatusBarStringView). Blank it when it says "No Service" or "No SIM".
+static void (*origSetText)(id, SEL, NSString *);
+static void hookedSetText(id self, SEL _cmd, NSString *text) {
+    origSetText(self, _cmd, isServiceText(text) ? @"" : text);
 }
-- (void)setAttributedText:(NSAttributedString *)text {
-    NSAttributedString *shown = isServiceText(text.string) ? [[NSAttributedString alloc] initWithString:@""] : text;
-    %orig(shown);
+
+static void (*origSetOriginalText)(id, SEL, NSString *);
+static void hookedSetOriginalText(id self, SEL _cmd, NSString *text) {
+    origSetOriginalText(self, _cmd, isServiceText(text) ? @"" : text);
 }
-%end
-%end
+
+static void (*origSetAlternateText)(id, SEL, NSString *);
+static void hookedSetAlternateText(id self, SEL _cmd, NSString *text) {
+    origSetAlternateText(self, _cmd, isServiceText(text) ? @"" : text);
+}
 
 %ctor {
-    gOrig = [NSMutableDictionary dictionary];
-    HMVHooked = [NSMutableArray array];
     Class telephony = objc_getClass("SBTelephonyManager");
     if (telephony && class_getInstanceMethod(telephony, @selector(isUsingVPNConnection))) {
         %init(Telephony);
     }
-    hookStatusBarData();
-    if (objc_getClass("_UIStatusBarStringView")) {
-        %init(StringView);
+
+    Class label = objc_getClass("STUIStatusBarStringView") ?: objc_getClass("_UIStatusBarStringView");
+    if (!label) return;
+    MSHookMessageEx(label, @selector(setText:), (IMP)hookedSetText, (IMP *)&origSetText);
+    if (class_getInstanceMethod(label, @selector(setOriginalText:))) {
+        MSHookMessageEx(label, @selector(setOriginalText:), (IMP)hookedSetOriginalText, (IMP *)&origSetOriginalText);
+    }
+    if (class_getInstanceMethod(label, @selector(setAlternateText:))) {
+        MSHookMessageEx(label, @selector(setAlternateText:), (IMP)hookedSetAlternateText, (IMP *)&origSetAlternateText);
     }
 }
