@@ -6,4 +6,4 @@ Depends: mobilesubstrate
 Maintainer: zachary7829
 Architecture: iphoneos-arm64
 Section: Tweaks
-Version: 1.2.2
+Version: 1.2.3

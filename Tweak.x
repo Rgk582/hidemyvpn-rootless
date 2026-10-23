@@ -3,6 +3,8 @@
 #import <substrate.h>
 
 static NSMutableDictionary<NSString *, NSValue *> *gOrig;
+int HMVGetterCalls, HMVSetterCalls, HMVStringViewCalls;
+NSMutableArray<NSString *> *HMVHooked;
 
 // Returns a copy of a status bar entry with enabled = NO, so its item isn't drawn.
 static id disabledEntry(id entry) {
@@ -21,11 +23,13 @@ static IMP origFor(SEL sel) {
 }
 
 static id hookedGetter(id self, SEL _cmd) {
+    HMVGetterCalls++;
     id entry = ((id (*)(id, SEL))origFor(_cmd))(self, _cmd);
     return disabledEntry(entry);
 }
 
 static void hookedSetter(id self, SEL _cmd, id entry) {
+    HMVSetterCalls++;
     ((void (*)(id, SEL, id))origFor(_cmd))(self, _cmd, disabledEntry(entry));
 }
 
@@ -33,6 +37,7 @@ static void hookMethod(Class cls, SEL sel, IMP replacement) {
     IMP orig = NULL;
     MSHookMessageEx(cls, sel, replacement, &orig);
     gOrig[NSStringFromSelector(sel)] = [NSValue valueWithPointer:(void *)orig];
+    [HMVHooked addObject:NSStringFromSelector(sel)];
 }
 
 static BOOL shouldHide(NSString *getter) {
@@ -82,6 +87,7 @@ static BOOL isServiceText(NSString *text) {
 %group StringView
 %hook _UIStatusBarStringView
 - (void)setText:(NSString *)text {
+    HMVStringViewCalls++;
     NSString *shown = isServiceText(text) ? @"" : text;
     %orig(shown);
 }
@@ -94,6 +100,7 @@ static BOOL isServiceText(NSString *text) {
 
 %ctor {
     gOrig = [NSMutableDictionary dictionary];
+    HMVHooked = [NSMutableArray array];
     Class telephony = objc_getClass("SBTelephonyManager");
     if (telephony && class_getInstanceMethod(telephony, @selector(isUsingVPNConnection))) {
         %init(Telephony);
