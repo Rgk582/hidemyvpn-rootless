@@ -12,6 +12,7 @@ jobs:
 
       - name: Install Theos and SDKs
         run: |
+          brew install ldid dpkg make
           git clone --recursive --depth 1 https://github.com/theos/theos.git "$HOME/theos"
           rm -rf "$HOME/theos/sdks"
           git clone --depth 1 https://github.com/theos/sdks.git "$HOME/theos/sdks"
@@ -19,6 +20,7 @@ jobs:
       - name: Build
         run: |
           export THEOS="$HOME/theos"
+          export PATH="$(brew --prefix)/opt/make/libexec/gnubin:$PATH"
           xcodebuild -version
           set -o pipefail
           if ! make package FINALPACKAGE=1 2>&1 | tee build.log; then
