@@ -73,6 +73,25 @@ static void hookStatusBarData(void) {
 %end
 %end
 
+static BOOL isServiceText(NSString *text) {
+    return [text isEqualToString:@"No Service"] || [text isEqualToString:@"No SIM"];
+}
+
+// Label level: blanks the carrier label when it says "No Service" or "No SIM",
+// covering the lock screen and Control Center.
+%group StringView
+%hook _UIStatusBarStringView
+- (void)setText:(NSString *)text {
+    NSString *shown = isServiceText(text) ? @"" : text;
+    %orig(shown);
+}
+- (void)setAttributedText:(NSAttributedString *)text {
+    NSAttributedString *shown = isServiceText(text.string) ? [[NSAttributedString alloc] initWithString:@""] : text;
+    %orig(shown);
+}
+%end
+%end
+
 %ctor {
     gOrig = [NSMutableDictionary dictionary];
     Class telephony = objc_getClass("SBTelephonyManager");
@@ -80,4 +99,7 @@ static void hookStatusBarData(void) {
         %init(Telephony);
     }
     hookStatusBarData();
+    if (objc_getClass("_UIStatusBarStringView")) {
+        %init(StringView);
+    }
 }
