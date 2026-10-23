@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -33,3 +36,11 @@ jobs:
         with:
           name: HideMyVPN-deb
           path: packages/*.deb
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(grep '^Version:' control | awk '{print $2}')
+          gh release view "v$VERSION" >/dev/null 2>&1 || gh release create "v$VERSION" --title "HideMyVPN $VERSION" --notes "Rootless build for Dopamine."
+          gh release upload "v$VERSION" packages/*.deb --clobber
