@@ -8,7 +8,7 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Theos and SDKs
         run: |
@@ -19,9 +19,15 @@ jobs:
       - name: Build
         run: |
           export THEOS="$HOME/theos"
-          make package FINALPACKAGE=1
+          xcodebuild -version
+          set -o pipefail
+          if ! make package FINALPACKAGE=1 2>&1 | tee build.log; then
+            msg=$(grep -v '^$' build.log | tail -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Build failed::$msg"
+            exit 1
+          fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: HideMyVPN-deb
           path: packages/*.deb
