@@ -1,0 +1,9 @@
+Package: com.zachary7829.hidemyvpn
+Name: HideMyVPN (rootless)
+Author: zachary7829
+Description: Hides the VPN icon and "No Service" in the status bar. Unofficial rootless port for Dopamine.
+Depends: mobilesubstrate
+Maintainer: zachary7829
+Architecture: iphoneos-arm64
+Section: Tweaks
+Version: 1.2.0

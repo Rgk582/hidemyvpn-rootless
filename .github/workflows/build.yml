@@ -1,0 +1,27 @@
+name: Build .deb
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Theos and SDKs
+        run: |
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$HOME/theos"
+          rm -rf "$HOME/theos/sdks"
+          git clone --depth 1 https://github.com/theos/sdks.git "$HOME/theos/sdks"
+
+      - name: Build
+        run: |
+          export THEOS="$HOME/theos"
+          make package FINALPACKAGE=1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HideMyVPN-deb
+          path: packages/*.deb
